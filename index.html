@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>🏠 Quản Lý Việc Nhà</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .theme-toggle {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: var(--card-bg);
+            color: var(--text-primary);
+            font-size: 1.25rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 250ms ease-in-out;
+            box-shadow: var(--shadow-sm);
+            z-index: 10;
+        }
+
+        .theme-toggle:active {
+            transform: scale(0.9);
+        }
+
+        .theme-toggle:hover {
+            background: var(--card-hover);
+            transform: rotate(180deg);
+        }
+
+        .week-picker {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .week-picker label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .week-picker-input {
+            padding: 0.75rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-family: var(--font-family);
+            transition: all 150ms ease-in-out;
+            cursor: pointer;
+        }
+
+        .week-picker-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .week-info {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .emoji-picker {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.75rem;
+            background: var(--bg-tertiary);
+            border-radius: 0.75rem;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .emoji-btn {
+            min-width: 48px;
+            min-height: 48px;
+            flex-shrink: 0;
+            font-size: 1.5rem;
+            border: 2px solid transparent;
+            border-radius: 0.5rem;
+            background: var(--bg-secondary);
+            cursor: pointer;
+            transition: all 150ms ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .emoji-btn:hover {
+            background: var(--card-hover);
+            transform: scale(1.1);
+        }
+
+        .emoji-btn:active {
+            transform: scale(0.95);
+        }
+
+        .emoji-btn.selected {
+            border-color: var(--primary);
+            background: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
+        .emoji-picker::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .emoji-picker::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+            border-radius: 3px;
+        }
+
+        .emoji-picker::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .emoji-picker::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <button class="theme-toggle" id="themeToggle" title="Chuyển giao diện">🌞</button>
+        <h1>🏠 Quản Lý Việc Nhà</h1>
+    </header>
+
+    <!-- Main Container -->
+    <main class="container">
+        <!-- Navigation Tabs -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="overview">📅 Lịch Tuần</button>
+            <button class="tab-btn" data-tab="tasks">📋 Công Việc</button>
+            <button class="tab-btn" data-tab="stats">📊 Thống Kê</button>
+            <button class="tab-btn" data-tab="settings">⚙️ Cài Đặt</button>
+        </nav>
+
+        <!-- Overview Tab (Weekly Calendar) -->
+        <section id="overview-tab" class="tab-content active">
+            <div class="calendar-container">
+                <div class="calendar-header">
+                    <h2>📅 Lịch Công Việc Tuần Này</h2>
+                    <div class="week-picker">
+                        <label for="weekPicker">Chọn tuần:</label>
+                        <input type="date" id="weekPicker" class="week-picker-input" />
+                        <div class="week-info" id="weekInfo"></div>
+                    </div>
+                </div>
+                <div class="calendar-grid" id="calendarGrid">
+                    <!-- Calendar will be rendered here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Tasks Tab -->
+        <section id="tasks-tab" class="tab-content">
+            <div id="tasksList" class="tasks-list">
+                <!-- Tasks will be rendered here -->
+            </div>
+        </section>
+
+        <!-- Stats Tab -->
+        <section id="stats-tab" class="tab-content">
+            <div class="stats-container">
+                <h2>📊 Thống Kê Tháng Này</h2>
+                <div id="memberStats" class="member-stats">
+                    <!-- Member statistics will be rendered here -->
+                </div>
+
+                <h3>📜 Lịch Sử Gần Đây</h3>
+                <div id="historyList" class="history-list">
+                    <!-- History will be rendered here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings Tab -->
+        <section id="settings-tab" class="tab-content">
+            <div class="settings-container">
+                <!-- Members Section -->
+                <div class="settings-section">
+                    <h2>👥 Quản Lý Thành Viên</h2>
+                    <div id="membersList" class="members-list">
+                        <!-- Members will be rendered here -->
+                    </div>
+                    <button class="btn btn-add" id="addMemberBtn">+ Thêm Thành Viên</button>
+                </div>
+
+                <!-- Tasks Section -->
+                <div class="settings-section">
+                    <h2>📋 Quản Lý Công Việc</h2>
+                    <div id="tasksSettingsList" class="tasks-settings-list">
+                        <!-- Tasks settings will be rendered here -->
+                    </div>
+                    <button class="btn btn-add" id="addTaskBtn">+ Thêm Công Việc</button>
+                </div>
+
+                <!-- Assignment Management Section -->
+                <div class="settings-section">
+                    <h2>📌 Quản Lý Phân Công</h2>
+                    <div id="assignmentsList" class="assignments-list">
+                        <!-- Assignments will be rendered here -->
+                    </div>
+                </div>
+
+                <!-- Data Management -->
+                <div class="settings-section">
+                    <h2>💾 Quản Lý Dữ Liệu</h2>
+                    <p class="info-text">📅 Dữ liệu sẽ tự động reset sau mỗi tháng</p>
+                    <div class="data-info">
+                        <p>Tháng hiện tại: <strong id="currentMonth"></strong></p>
+                        <p>Tổng số lần hoàn thành: <strong id="totalCompletions"></strong></p>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-secondary" id="exportBtn">📤 Export Dữ Liệu</button>
+                        <button class="btn btn-secondary" id="importBtn">📥 Import Dữ Liệu</button>
+                        <button class="btn btn-danger" id="resetBtn">🗑️ Reset Toàn Bộ</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal for Adding/Editing Member -->
+    <div id="memberModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="memberModalTitle">Thêm Thành Viên</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="memberIdInput">
+                <div class="form-group">
+                    <label for="memberNameInput">Tên:</label>
+                    <input type="text" id="memberNameInput" placeholder="Nhập tên..." maxlength="20">
+                </div>
+                <div class="form-group">
+                    <label for="memberEmojiInput">Icon (tùy chọn):</label>
+                    <input type="hidden" id="memberEmojiInput" value="👤">
+                    <div class="emoji-picker" id="memberEmojiPicker">
+                        <button type="button" class="emoji-btn" data-emoji="👤">👤</button>
+                        <button type="button" class="emoji-btn" data-emoji="😊">😊</button>
+                        <button type="button" class="emoji-btn" data-emoji="😎">😎</button>
+                        <button type="button" class="emoji-btn" data-emoji="🤓">🤓</button>
+                        <button type="button" class="emoji-btn" data-emoji="😁">😁</button>
+                        <button type="button" class="emoji-btn" data-emoji="🥳">🥳</button>
+                        <button type="button" class="emoji-btn" data-emoji="😇">😇</button>
+                        <button type="button" class="emoji-btn" data-emoji="🌸">🌸</button>
+                        <button type="button" class="emoji-btn" data-emoji="💪">💪</button>
+                        <button type="button" class="emoji-btn" data-emoji="👨">👨</button>
+                        <button type="button" class="emoji-btn" data-emoji="👩">👩</button>
+                        <button type="button" class="emoji-btn" data-emoji="🧑">🧑</button>
+                        <button type="button" class="emoji-btn" data-emoji="⭐">⭐</button>
+                        <button type="button" class="emoji-btn" data-emoji="💎">💎</button>
+                        <button type="button" class="emoji-btn" data-emoji="🎯">🎯</button>
+                        <button type="button" class="emoji-btn" data-emoji="🏆">🏆</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelMemberBtn">Hủy</button>
+                <button class="btn btn-primary" id="saveMemberBtn">Lưu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Adding/Editing Task -->
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="taskModalTitle">Thêm Công Việc</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="taskIdInput">
+                <div class="form-group">
+                    <label for="taskNameInput">Tên công việc:</label>
+                    <input type="text" id="taskNameInput" placeholder="VD: Lau nhà" maxlength="30">
+                </div>
+                <div class="form-group">
+                    <label for="taskIconInput">Icon:</label>
+                    <input type="hidden" id="taskIconInput" value="✅">
+                    <div class="emoji-picker" id="taskEmojiPicker">
+                        <button type="button" class="emoji-btn" data-emoji="🧹">🧹</button>
+                        <button type="button" class="emoji-btn" data-emoji="🍽️">🍽️</button>
+                        <button type="button" class="emoji-btn" data-emoji="🗑️">🗑️</button>
+                        <button type="button" class="emoji-btn" data-emoji="🧺">🧺</button>
+                        <button type="button" class="emoji-btn" data-emoji="🧼">🧼</button>
+                        <button type="button" class="emoji-btn" data-emoji="🚿">🚿</button>
+                        <button type="button" class="emoji-btn" data-emoji="🛁">🛁</button>
+                        <button type="button" class="emoji-btn" data-emoji="🧽">🧽</button>
+                        <button type="button" class="emoji-btn" data-emoji="🪣">🪣</button>
+                        <button type="button" class="emoji-btn" data-emoji="💧">💧</button>
+                        <button type="button" class="emoji-btn" data-emoji="🌿">🌿</button>
+                        <button type="button" class="emoji-btn" data-emoji="🍳">🍳</button>
+                        <button type="button" class="emoji-btn" data-emoji="☕">☕</button>
+                        <button type="button" class="emoji-btn" data-emoji="🔪">🔪</button>
+                        <button type="button" class="emoji-btn" data-emoji="🥘">🥘</button>
+                        <button type="button" class="emoji-btn" data-emoji="✅">✅</button>
+                        <button type="button" class="emoji-btn" data-emoji="✔️">✔️</button>
+                        <button type="button" class="emoji-btn" data-emoji="📝">📝</button>
+                        <button type="button" class="emoji-btn" data-emoji="🏠">🏠</button>
+                        <button type="button" class="emoji-btn" data-emoji="🪟">🪟</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="taskCycleInput">Chu kỳ:</label>
+                    <select id="taskCycleInput">
+                        <option value="daily">Hàng ngày</option>
+                        <option value="every2days">2 ngày/lần</option>
+                        <option value="weekly">Hàng tuần</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelTaskBtn">Hủy</button>
+                <button class="btn btn-primary" id="saveTaskBtn">Lưu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Assigning Task to Member on a Date -->
+    <div id="assignmentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="assignmentModalTitle">Gán Công Việc</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="assignmentMemberId">
+                <input type="hidden" id="assignmentTaskId">
+                <input type="hidden" id="assignmentDate">
+
+                <div class="form-group">
+                    <label>Thành viên:</label>
+                    <div id="assignmentMemberDisplay" class="assignment-display"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="assignmentTaskSelect">Công việc:</label>
+                    <select id="assignmentTaskSelect">
+                        <option value="">-- Chọn công việc --</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="assignmentDaySelect">Ngày:</label>
+                    <select id="assignmentDaySelect">
+                        <option value="1">Thứ 2</option>
+                        <option value="2">Thứ 3</option>
+                        <option value="3">Thứ 4</option>
+                        <option value="4">Thứ 5</option>
+                        <option value="5">Thứ 6</option>
+                        <option value="6">Thứ 7</option>
+                        <option value="0">Chủ Nhật</option>
+                    </select>
+                </div>
+
+                <div class="info-text" style="margin-top: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
+                    💡 Một người có thể làm nhiều công việc trong tuần
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelAssignmentBtn">Hủy</button>
+                <button class="btn btn-danger" id="clearAssignmentBtn" style="display: none;">Xóa Phân Công</button>
+                <button class="btn btn-primary" id="saveAssignmentBtn">Lưu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Camera Photo Check-in -->
+    <div id="cameraModal" class="modal">
+        <div class="modal-content camera-modal-content">
+            <div class="modal-header">
+                <h3>📷 Chụp Ảnh Check-in</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="cameraTaskId">
+                <video id="cameraVideo" autoplay playsinline></video>
+                <canvas id="cameraCanvas" style="display:none;"></canvas>
+                <img id="capturedImage" style="display:none;" />
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelCameraBtn">Hủy</button>
+                <button class="btn btn-primary" id="capturePhotoBtn">📷 Chụp</button>
+                <button class="btn btn-success" id="savePhotoBtn" style="display:none;">✓ Lưu</button>
+                <button class="btn btn-warning" id="retakePhotoBtn" style="display:none;">🔄 Chụp Lại</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden file input for import -->
+    <input type="file" id="importFileInput" accept=".json" style="display: none;">
+
+    <script src="app.js"></script>
+</body>
+
+</html>
