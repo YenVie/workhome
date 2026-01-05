@@ -1,7 +1,7 @@
 // Firebase Hybrid Sync Functions
 // This file adds manual sync capability between localStorage and Firestore
 
-// Upload local data to Firebase
+// Upload local data to Firebase (with deletion support)
 async function uploadToFirebase() {
     try {
         console.log('📤 Uploading to Firebase...');
@@ -15,14 +15,44 @@ async function uploadToFirebase() {
 
         const { members = [], tasks = [], history = [], assignments = {} } = data;
 
-        // Upload members
+        // Get IDs from localStorage
+        const localMemberIds = new Set(members.map(m => m.id));
+        const localTaskIds = new Set(tasks.map(t => t.id));
+        const localHistoryIds = new Set(history.map(h => h.id));
+        const localAssignmentKeys = new Set(Object.keys(assignments));
+
+        // --- SYNC MEMBERS (upload + delete) ---
+        const membersSnapshot = await db.collection('members').get();
+        const remoteMemberIds = new Set(membersSnapshot.docs.map(doc => doc.id));
+
+        // Upload/update members
         for (const member of members) {
             await db.collection('members').doc(member.id).set(member, { merge: true });
         }
 
-        // Upload tasks
+        // Delete members that exist in Firebase but not in localStorage
+        for (const doc of membersSnapshot.docs) {
+            if (!localMemberIds.has(doc.id)) {
+                await db.collection('members').doc(doc.id).delete();
+                console.log(`Deleted member: ${doc.id}`);
+            }
+        }
+
+        // --- SYNC TASKS (upload + delete) ---
+        const tasksSnapshot = await db.collection('tasks').get();
+        const remoteTaskIds = new Set(tasksSnapshot.docs.map(doc => doc.id));
+
+        // Upload/update tasks
         for (const task of tasks) {
             await db.collection('tasks').doc(task.id).set(task, { merge: true });
+        }
+
+        // Delete tasks that exist in Firebase but not in localStorage
+        for (const doc of tasksSnapshot.docs) {
+            if (!localTaskIds.has(doc.id)) {
+                await db.collection('tasks').doc(doc.id).delete();
+                console.log(`Deleted task: ${doc.id}`);
+            }
         }
 
         // Upload history (batch in chunks of 500)
