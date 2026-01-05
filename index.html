@@ -230,6 +230,8 @@
                         <p>Tổng số lần hoàn thành: <strong id="totalCompletions"></strong></p>
                     </div>
                     <div class="btn-group">
+                        <button class="btn btn-primary" id="syncBtn" onclick="syncWithFirebase()">🔄 Sync với
+                            Firebase</button>
                         <button class="btn btn-secondary" id="exportBtn">📤 Export Dữ Liệu</button>
                         <button class="btn btn-secondary" id="importBtn">📥 Import Dữ Liệu</button>
                         <button class="btn btn-danger" id="resetBtn">🗑️ Reset Toàn Bộ</button>
@@ -411,7 +413,30 @@
     <!-- Hidden file input for import -->
     <input type="file" id="importFileInput" accept=".json" style="display: none;">
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-storage-compat.js"></script>
+
+    <!-- Firebase Configuration -->
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCE8Re_0-D0QYVuFiguUFe4xI-ldI2Dsbo",
+            authDomain: "workhomehcm-f416f.firebaseapp.com",
+            projectId: "workhomehcm-f416f",
+            storageBucket: "workhomehcm-f416f.firebasestorage.app",
+            messagingSenderId: "407929355238",
+            appId: "1:407929355238:web:c8089fb6c27dbe2bb1f427"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const storage = firebase.storage();
+    </script>
+
     <script src="app.js"></script>
+    <script src="firebase-sync.js"></script>
 </body>
 
 </html>
