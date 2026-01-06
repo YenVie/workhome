@@ -3,13 +3,19 @@ const APP_VERSION = '1.0.0';
 const STORAGE_KEY = 'householdChoreManager';
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#ec4899', '#14b8a6'];
 
+// Firestore collection references
+const membersCollection = db.collection('members');
+const tasksCollection = db.collection('tasks');
+const historyCollection = db.collection('history');
+const assignmentsCollection = db.collection('assignments');
+
 let appData = {
     version: APP_VERSION,
     currentMonth: getCurrentMonth(),
     members: [],
     tasks: [],
     history: [],
-    assignments: {}, // Manual assignments: { "taskId-YYYY-MM-DD": "memberId" }
+    assignments: {},
     settings: {
         autoResetMonthly: true
     }
@@ -57,46 +63,59 @@ function getColorForMember(index) {
 }
 
 // ===== Data Management =====
-function saveData() {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
-    } catch (error) {
-        console.error('Error saving data:', error);
-        alert('❌ Lỗi khi lưu dữ liệu!');
-    }
-}
+// ===== Data Management (Real-time) =====
+function setupFirestoreListeners() {
+    console.log('📡 Setting up Firestore listeners...');
 
-function loadData() {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-            const parsed = JSON.parse(saved);
+    // Members Listener
+    membersCollection.onSnapshot(snapshot => {
+        appData.members = [];
+        snapshot.forEach(doc => {
+            appData.members.push(doc.data());
+        });
+        // Sort by ID or name if needed, or keep insertion order
+        renderAll();
+    });
 
-            // Check if month has changed - auto reset if enabled
-            const currentMonth = getCurrentMonth();
-            if (parsed.settings?.autoResetMonthly && parsed.currentMonth !== currentMonth) {
-                console.log('New month detected - resetting history');
-                parsed.history = [];
-                parsed.currentMonth = currentMonth;
-
-                // Reset completion status for all tasks
-                if (parsed.tasks) {
-                    parsed.tasks.forEach(task => {
-                        task.lastCompleted = null;
-                        task.completedToday = false;
-                    });
-                }
+    // Tasks Listener
+    tasksCollection.onSnapshot(snapshot => {
+        appData.tasks = [];
+        snapshot.forEach(doc => {
+            appData.tasks.push(doc.data());
+        });
+        // Recalculate 'completedToday' based on 'lastCompleted'
+        appData.tasks.forEach(task => {
+            if (task.lastCompleted && isToday(task.lastCompleted)) {
+                task.completedToday = true;
+            } else {
+                task.completedToday = false;
             }
+        });
+        renderAll();
+    });
 
-            appData = { ...appData, ...parsed };
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.error('Error loading data:', error);
-        return false;
-    }
+    // History Listener (descending order)
+    historyCollection.orderBy('completedAt', 'desc').limit(100).onSnapshot(snapshot => {
+        appData.history = [];
+        snapshot.forEach(doc => {
+            appData.history.push(doc.data());
+        });
+        renderAll();
+    });
+
+    // Assignments Listener
+    assignmentsCollection.onSnapshot(snapshot => {
+        appData.assignments = {};
+        snapshot.forEach(doc => {
+            appData.assignments[doc.id] = doc.data().memberId;
+        });
+        renderAll();
+    });
 }
+
+// Deprecated functions (kept to prevent errors during refactor)
+function saveData() { console.log('saveData called - ignored (using Firestore)'); }
+function loadData() { return false; }
 
 function exportData() {
     const dataStr = JSON.stringify(appData, null, 2);
@@ -164,29 +183,38 @@ function resetAllData() {
 }
 
 // ===== Member Management =====
-function addMember(name, emoji = '👤') {
+async function addMember(name, emoji = '👤') {
+    const id = generateId();
     const member = {
-        id: generateId(),
+        id: id,
         name: name.trim(),
         emoji: emoji || '👤',
-        color: getColorForMember(appData.members.length)
+        color: getColorForMember(appData.members.length) // This might be inconsistent if multiple adds happen, but OK for now
     };
-    appData.members.push(member);
-    saveData();
-    return member;
-}
-
-function editMember(id, name, emoji) {
-    const member = appData.members.find(m => m.id === id);
-    if (member) {
-        member.name = name.trim();
-        member.emoji = emoji || '👤';
-        saveData();
+    try {
+        await membersCollection.doc(id).set(member);
+        console.log('Member added to Firestore');
+        return member;
+    } catch (e) {
+        console.error('Error adding member:', e);
+        alert('Lỗi thêm thành viên');
     }
 }
 
-function deleteMember(id) {
-    // Check if member is in any task queue
+async function editMember(id, name, emoji) {
+    try {
+        await membersCollection.doc(id).update({
+            name: name.trim(),
+            emoji: emoji || '👤'
+        });
+    } catch (e) {
+        console.error('Error editing member:', e);
+        alert('Lỗi sửa thành viên');
+    }
+}
+
+async function deleteMember(id) {
+    // Check if member is in any task queue (using local data is instant)
     const inUse = appData.tasks.some(task => task.queue.includes(id));
     if (inUse) {
         alert('❌ Không thể xóa! Thành viên này đang được phân công việc nhà.');
@@ -194,9 +222,13 @@ function deleteMember(id) {
     }
 
     if (confirm('Bạn có chắc chắn muốn xóa thành viên này?')) {
-        appData.members = appData.members.filter(m => m.id !== id);
-        saveData();
-        return true;
+        try {
+            await membersCollection.doc(id).delete();
+            return true;
+        } catch (e) {
+            console.error('Error deleting member:', e);
+            alert('Lỗi xóa thành viên');
+        }
     }
     return false;
 }
@@ -206,9 +238,10 @@ function getMember(id) {
 }
 
 // ===== Task Management =====
-function addTask(name, icon, cycle) {
+async function addTask(name, icon, cycle) {
+    const id = generateId();
     const task = {
-        id: generateId(),
+        id: id,
         name: name.trim(),
         icon: icon || '✅',
         cycle: cycle || 'daily',
@@ -217,86 +250,151 @@ function addTask(name, icon, cycle) {
         lastCompleted: null,
         completedToday: false
     };
-    appData.tasks.push(task);
-    saveData();
-    return task;
-}
-
-function editTask(id, name, icon, cycle) {
-    const task = appData.tasks.find(t => t.id === id);
-    if (task) {
-        task.name = name.trim();
-        task.icon = icon || '✅';
-        task.cycle = cycle || 'daily';
-        saveData();
+    try {
+        await tasksCollection.doc(id).set(task);
+        return task;
+    } catch (e) {
+        console.error('Error adding task:', e);
+        alert('Lỗi thêm công việc');
     }
 }
 
-function handleDeleteAssignment(key) {
-    console.log('🔍 handleDeleteAssignment called with key:', key);
-    console.log('🔍 Current assignments:', appData.assignments);
-
-    console.log('✅ Deleting directly (no confirm)...');
-    // Delete using the key directly
-    delete appData.assignments[key];
-    console.log('🔍 After delete:', appData.assignments);
-    saveData();
-    renderAll();
-    console.log('✅ Done!');
+async function editTask(id, name, icon, cycle) {
+    try {
+        await tasksCollection.doc(id).update({
+            name: name.trim(),
+            icon: icon || '✅',
+            cycle: cycle || 'daily'
+        });
+    } catch (e) {
+        console.error('Error editing task:', e);
+        alert('Lỗi sửa công việc');
+    }
 }
-function deleteTask(id) {
+
+async function handleDeleteAssignment(key) {
+    console.log('🔍 Deleting assignment:', key);
+    try {
+        await assignmentsCollection.doc(key).delete();
+        console.log('✅ Assignment deleted');
+    } catch (e) {
+        console.error('Error deleting assignment:', e);
+    }
+}
+
+async function deleteTask(id) {
     if (confirm('Bạn có chắc chắn muốn xóa công việc này?')) {
-        appData.tasks = appData.tasks.filter(t => t.id !== id);
-        saveData();
-        return true;
+        try {
+            await tasksCollection.doc(id).delete();
+            return true;
+        } catch (e) {
+            console.error('Error deleting task:', e);
+            alert('Lỗi xóa công việc');
+        }
     }
     return false;
 }
 
-function completeTask(taskId) {
+// ===== Task Completion =====
+async function completeTask(taskId, photoUrl = null) {
     const task = appData.tasks.find(t => t.id === taskId);
     if (!task) return;
+
+    if (task.completedToday && !photoUrl) return; // Allow if adding photo? Or just block.
+    // If we want to allow taking photo for already completed task, we need different logic.
+    // But for now, assume photo check-in IS the completion action.
+    if (task.completedToday) return;
 
     const currentMemberId = task.queue[task.currentIndex];
     const now = new Date().toISOString();
+    const historyId = generateId();
 
-    // Add to history
-    appData.history.unshift({
-        id: generateId(),
-        taskId: task.id,
-        taskName: task.name,
-        taskIcon: task.icon,
-        memberId: currentMemberId,
-        completedAt: now,
-        photoUrl: null  // Photo check-in URL
-    });
+    try {
+        const batch = db.batch();
 
-    // Update task
-    task.lastCompleted = now;
-    task.completedToday = true;
+        // 1. Add to history
+        const historyRef = historyCollection.doc(historyId);
+        batch.set(historyRef, {
+            id: historyId,
+            taskId: task.id,
+            taskName: task.name,
+            taskIcon: task.icon,
+            memberId: currentMemberId,
+            completedAt: now,
+            photoUrl: photoUrl
+        });
 
-    // Rotate to next person
-    task.currentIndex = (task.currentIndex + 1) % task.queue.length;
+        // 2. Update task
+        const taskRef = tasksCollection.doc(taskId);
+        batch.update(taskRef, {
+            lastCompleted: now,
+            currentIndex: (task.currentIndex + 1) % task.queue.length
+            // 'completedToday' is calculated on client side locally, not stored permanently if we use lastCompleted check
+        });
 
-    saveData();
+        await batch.commit();
+        console.log('Task completed via Firestore');
+    } catch (e) {
+        console.error('Error completing task:', e);
+        alert('Lỗi hoàn thành công việc');
+    }
 }
 
-function undoCompleteTask(taskId) {
+async function undoCompleteTask(taskId) {
     const task = appData.tasks.find(t => t.id === taskId);
     if (!task) return;
 
-    // Remove ALL history entries for this task today (including photos)
-    appData.history = appData.history.filter(entry =>
-        !(entry.taskId === taskId && entry.completedAt && isToday(entry.completedAt))
-    );
+    try {
+        // Find today's history entries for this task
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
 
-    // Reset task completion status
-    task.completedToday = false;
+        // Firestore query (client side filter might be easier if small data, but let's try query)
+        // Since we store string ISO, string comparison works for YYYY-MM-DD
+        // easier: get all history for task, filter in memory (since we limit 100)
 
-    // Rotate back to previous person
-    task.currentIndex = (task.currentIndex - 1 + task.queue.length) % task.queue.length;
+        const historySnapshot = await historyCollection
+            .where('taskId', '==', taskId)
+            .get();
 
-    saveData();
+        const batch = db.batch();
+        let deletedCount = 0;
+
+        historySnapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.completedAt && isToday(data.completedAt)) {
+                batch.delete(historyCollection.doc(doc.id));
+                deletedCount++;
+            }
+        });
+
+        if (deletedCount > 0) {
+            // Update task: rotate back
+            const newIndex = (task.currentIndex - 1 + task.queue.length) % task.queue.length;
+
+            // We need to set lastCompleted to null OR previous date. 
+            // Simplifying: set to null if only completed today. 
+            // Ideally we find the previous completion, but for minimal scope, null or just leaving it is fine 
+            // as long as completedToday logic checks Date.
+            // If we undo a completion, 'lastCompleted' should probably revert. 
+            // Hard to revert to exact previous date without querying history.
+            // Workaround: Set lastCompleted to null. If completed yesterday, it will show uncompleted today (Correct).
+
+            const taskRef = tasksCollection.doc(taskId);
+            batch.update(taskRef, {
+                lastCompleted: null, // Resetting to null forces 'completedToday' to be false
+                currentIndex: newIndex
+            });
+
+            await batch.commit();
+            console.log('Undo complete via Firestore');
+        }
+    } catch (e) {
+        console.error('Error undoing task:', e);
+        alert('Lỗi hoàn tác');
+    }
 }
 
 function getCycleText(cycle) {
@@ -1164,34 +1262,17 @@ function addTimestampToImage(ctx, width, height, timestamp) {
     ctx.fillText(text, x, y);
 }
 
-function savePhoto() {
+async function savePhoto() {
     const taskId = document.getElementById('cameraTaskId').value;
     const capturedImage = document.getElementById('capturedImage');
     const photoUrl = capturedImage.src;
 
     if (!photoUrl || !taskId) return;
 
-    // Create completion entry with photo
-    const task = appData.tasks.find(t => t.id === taskId);
-    if (!task) return;
+    // Use completeTask to handle Firestore write (and task rotation)
+    await completeTask(taskId, photoUrl);
 
-    const currentMemberId = task.queue[task.currentIndex];
-    const now = new Date().toISOString();
-
-    // Add to history with photo
-    appData.history.unshift({
-        id: generateId(),
-        taskId: task.id,
-        taskName: task.name,
-        taskIcon: task.icon,
-        memberId: currentMemberId,
-        completedAt: now,
-        photoUrl: photoUrl
-    });
-
-    saveData();
     closeCameraModal();
-    renderAll();
 }
 
 function retakePhoto() {
@@ -1293,20 +1374,35 @@ function formatDateKey(date) {
     return `${year}-${month}-${day}`;
 }
 
-function setManualAssignment(taskId, dateStr, memberId) {
+async function setManualAssignment(taskId, dateStr, memberId) {
     const key = `${taskId}-${dateStr}`;
-    if (memberId) {
-        appData.assignments[key] = memberId;
-    } else {
-        delete appData.assignments[key];
+    try {
+        if (memberId) {
+            await assignmentsCollection.doc(key).set({
+                memberId: memberId,
+                taskId: taskId,
+                date: dateStr
+            });
+        } // Else delete logic handled by set? No, clearManualAssignment handles delete.
+        // If we want to support unsetting by passing null, we should add delete here.
+        // But original logic deleted if !memberId.
+        else {
+            await assignmentsCollection.doc(key).delete();
+        }
+        console.log('Manual assignment set/cleared via Firestore');
+    } catch (e) {
+        console.error('Error setting assignment:', e);
+        alert('Lỗi phân công');
     }
-    saveData();
 }
 
-function clearManualAssignment(taskId, dateStr) {
+async function clearManualAssignment(taskId, dateStr) {
     const key = `${taskId}-${dateStr}`;
-    delete appData.assignments[key];
-    saveData();
+    try {
+        await assignmentsCollection.doc(key).delete();
+    } catch (e) {
+        console.error('Error clearing assignment:', e);
+    }
 }
 
 function getManualAssignment(taskId, dateStr) {
@@ -1331,20 +1427,10 @@ function initializeApp() {
     // Initialize theme first
     initializeTheme();
 
-    // Load data
-    const hasData = loadData();
+    // Start Real-time Sync (replaces loadData)
+    setupFirestoreListeners();
 
-    // Initialize with sample data if first time
-    if (!hasData) {
-        console.log('First time user - initializing with sample data');
-        addMember('Minh', '😊');
-        addMember('Lan', '🌸');
-        addMember('Hùng', '💪');
-        addTask('Lau nhà', '🧹', 'daily');
-        addTask('Rửa bát', '🍽️', 'daily');
-        addTask('Đổ rác', '🗑️', 'daily');
-        saveData();
-    }
+    // No sample data needed - will sync from Cloud
 
     // Setup tab navigation
     document.querySelectorAll('.tab-btn').forEach(btn => {
